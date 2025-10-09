@@ -26,6 +26,8 @@ Pane {
     property alias ytDlpConsolidatedStatusText: ytDlpStatusLabel.text
     property alias ytDlpStatusColor: ytDlpStatusLabel.color // Keep color alias for the consolidated label
 
+    property bool updateButtonEnabled: true
+
     onBusyChanged: {
         console.log("Footer.qml: root.busy changed to " + root.busy + ", setting stackLayout.currentIndex to " + (root.busy ? 1 : 0));
     }
@@ -98,6 +100,7 @@ Pane {
                 StyledButton {
                     id: updateToolsButton
                     text: "Update tools"
+                    enabled: root.updateButtonEnabled
                     onClicked: root.updateToolsClicked()
                     Layout.alignment: Qt.AlignVCenter // Vertically center the button
                 }

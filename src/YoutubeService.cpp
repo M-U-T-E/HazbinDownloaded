@@ -8,6 +8,8 @@
 #include <QUrl>
 #include <QImage>
 #include <QBuffer>
+#include <QStandardPaths>
+#include <QRegularExpression>
 
 // Helper to format duration from seconds to HH:mm:ss
 QString formatDuration(double totalSeconds) {
@@ -34,6 +36,7 @@ QString formatSize(double bytes) {
 YoutubeService::YoutubeService(ToolsManager *toolsManager, QObject *parent)
     : YtDlp{parent}
     , m_process(new QProcess(this))
+    , m_downloadProcess(new QProcess(this))
     , m_toolsManager(toolsManager)
     , m_parsingInitiated(false)
 {
@@ -50,6 +53,11 @@ YoutubeService::YoutubeService(ToolsManager *toolsManager, QObject *parent)
     connect(m_process, &QProcess::errorOccurred, this, &YoutubeService::onProcessErrorOccurred);
     connect(m_process, &QProcess::readyReadStandardOutput, this, &YoutubeService::onReadyReadStandardOutput);
     connect(m_process, &QProcess::readyReadStandardError, this, &YoutubeService::onReadyReadStandardError);
+
+    connect(m_downloadProcess, &QProcess::finished, this, &YoutubeService::onDownloadProcessFinished);
+    connect(m_downloadProcess, &QProcess::errorOccurred, this, &YoutubeService::onDownloadProcessErrorOccurred);
+    connect(m_downloadProcess, &QProcess::readyReadStandardOutput, this, &YoutubeService::onReadyReadDownloadProcessStandardOutput);
+    connect(m_downloadProcess, &QProcess::readyReadStandardError, this, &YoutubeService::onReadyReadDownloadProcessStandardError);
 }
 
 void YoutubeService::execute(const QString &program, const QStringList &arguments)
@@ -80,7 +88,49 @@ void YoutubeService::execute(const QString &program, const QStringList &argument
 void YoutubeService::fetchVideoInfo(const QString &url)
 {
     qDebug() << "YoutubeService: Fetching video info for URL:" << url;
-    execute("yt-dlp", {"--no-progress", "--dump-json", url});
+    execute("yt-dlp", {"--no-progress", "--dump-json", "--no-playlist", url});
+}
+
+void YoutubeService::download(const QString &url, const QVariantMap &videoFormat, const QVariantMap &audioFormat)
+{
+    QStringList arguments;
+    QString formatString;
+
+    if (videoFormat.value("format_id").isValid() && audioFormat.value("format_id").isValid()) {
+        formatString = videoFormat.value("format_id").toString() + "+" + audioFormat.value("format_id").toString();
+    } else if (videoFormat.value("format_id").isValid()) {
+        formatString = videoFormat.value("format_id").toString();
+    } else if (audioFormat.value("format_id").isValid()) {
+        formatString = audioFormat.value("format_id").toString();
+    } else {
+        emit downloadError("No formats selected for download.");
+        return;
+    }
+
+    arguments << "--no-playlist";
+    arguments << "-f" << formatString;
+    arguments << "--embed-thumbnail";
+    arguments << "--embed-metadata";
+
+    QString downloadPath = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (downloadPath.isEmpty()) {
+        downloadPath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    }
+    QString outputTemplate = downloadPath + "/%(title)s [%(id)s].%(ext)s";
+    arguments << "-o" << outputTemplate;
+
+    arguments << "--progress";
+    arguments << "--ffmpeg-location" << m_toolsManager->ffmpegPath();
+    arguments << url;
+
+    QString executablePath = m_toolsManager->ytDlpPath();
+    if (executablePath.isEmpty()) {
+        emit downloadError("yt-dlp executable not found.");
+        return;
+    }
+
+    qDebug() << "YoutubeService: Starting download with command:" << executablePath << arguments;
+    m_downloadProcess->start(executablePath, arguments);
 }
 
 void YoutubeService::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
@@ -148,9 +198,12 @@ void YoutubeService::parseAndEmitVideoInfo()
 
     QJsonObject root = doc.object();
     m_pendingVideoInfo.clear();
+    m_pendingVideoInfo.insert("webpage_url", root.value("webpage_url").toString());
     m_pendingVideoInfo.insert("title", root.value("title").toString());
     m_pendingVideoInfo.insert("channel", root.value("channel").toString());
     m_pendingVideoInfo.insert("duration", formatDuration(root.value("duration").toDouble()));
+    m_pendingVideoInfo.insert("artist", root.value("artist").toString());
+    m_pendingVideoInfo.insert("album", root.value("album").toString());
 
     QVariantList formatsList;
     QJsonArray formats = root.value("formats").toArray();
@@ -221,4 +274,70 @@ void YoutubeService::onThumbnailDownloaded(QNetworkReply *reply)
     emit videoInfoReady(m_pendingVideoInfo);
     qDebug() << "YoutubeService: Emitted videoInfoReady signal.";
     reply->deleteLater();
+}
+
+void YoutubeService::onDownloadProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
+{
+    qDebug() << "YoutubeService: Download process finished with exitCode:" << exitCode << ", exitStatus:" << exitStatus;
+    if (exitCode == 0 && exitStatus == QProcess::NormalExit) {
+        emit downloadFinished(m_downloadFilePath);
+    } else {
+        QString error = m_downloadProcess->readAllStandardError();
+        if (error.isEmpty()) {
+            error = QString("Download process failed with exit code %1").arg(exitCode);
+        }
+        emit downloadError(error);
+    }
+}
+
+void YoutubeService::onDownloadProcessErrorOccurred(QProcess::ProcessError error)
+{
+    qDebug() << "YoutubeService: Download QProcess error occurred:" << error << ", errorString:" << m_downloadProcess->errorString();
+    emit downloadError(m_downloadProcess->errorString());
+}
+
+void YoutubeService::onReadyReadDownloadProcessStandardOutput()
+{
+    QByteArray data = m_downloadProcess->readAllStandardOutput();
+    QString output = QString::fromUtf8(data);
+    emit processOutput(output);
+
+    QRegularExpression progressRe("\[download\]\\s+([\\d\\.]+)%");
+    QRegularExpressionMatch progressMatch = progressRe.match(output);
+    if (progressMatch.hasMatch()) {
+        double progress = progressMatch.captured(1).toDouble();
+        emit downloadProgress(static_cast<int>(progress));
+    }
+
+    QRegularExpression mergeRe("\[Merger\] Merging formats into \"(.*)\"");
+    QRegularExpressionMatch mergeMatch = mergeRe.match(output);
+    if (mergeMatch.hasMatch()) {
+        m_downloadFilePath = mergeMatch.captured(1);
+        qDebug() << "YoutubeService: Detected merged file path:" << m_downloadFilePath;
+    }
+
+    QRegularExpression destRe("\[download\] Destination: (.*)");
+    QRegularExpressionMatch destMatch = destRe.match(output);
+    if (destMatch.hasMatch()) {
+        m_downloadFilePath = destMatch.captured(1);
+        qDebug() << "YoutubeService: Detected download file path:" << m_downloadFilePath;
+    }
+
+    QRegularExpression ffmpegMergeRe("\[ffmpeg\] Merging formats into \"(.*)\"");
+    QRegularExpressionMatch ffmpegMergeMatch = ffmpegMergeRe.match(output);
+    if (ffmpegMergeMatch.hasMatch()) {
+        m_downloadFilePath = ffmpegMergeMatch.captured(1);
+        qDebug() << "YoutubeService: Detected merged file path (ffmpeg):" << m_downloadFilePath;
+    }
+}
+
+void YoutubeService::onReadyReadDownloadProcessStandardError()
+{
+    QString error = QString::fromLatin1(m_downloadProcess->readAllStandardError());
+    if (error.startsWith("ERROR:")) {
+        emit downloadError(error);
+    } else {
+        qDebug() << "YoutubeService: Download process stderr:" << error;
+        emit processError(error);
+    }
 }

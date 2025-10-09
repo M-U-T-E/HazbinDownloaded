@@ -11,6 +11,8 @@ Rectangle {
     property bool showStatus: false
     property bool isValid: false
     property string contentType: ""
+    property string videoUrl: ""
+    property bool isLoading: loadingOverlay.visible
 
     property var selectedVideoFormat: null
     property var selectedAudioFormat: null
@@ -66,10 +68,14 @@ Rectangle {
         target: youtubeService
 
         function onVideoInfoReady(info) {
+            loadingOverlay.visible = false;
+            root.videoUrl = info.webpage_url;
             thumbnailImage.source = info.thumbnail
             titleText.text = info.title
             channelText.text = "<b>Channel:</b> " + info.channel
             durationText.text = "<b>Duration:</b> " + info.duration
+            artistText.text = "<b>Artist:</b> " + info.artist
+            albumText.text = "<b>Album:</b> " + info.album
 
             videoFormatsModel.clear()
             audioFormatsModel.clear()
@@ -89,34 +95,23 @@ Rectangle {
 
             audioFormats.sort((a, b) => b.abr - a.abr);
 
-            console.log("QML: onVideoInfoReady - Total video formats categorized:" + videoFormats.length);
-            console.log("QML: onVideoInfoReady - Total audio formats categorized:" + audioFormats.length);
-
             for (var i = 0; i < videoFormats.length; i++) {
-                // Add a 'checked' property to each item
                 videoFormats[i].checked = false;
                 videoFormatsModel.append(videoFormats[i]);
             }
             for (var i = 0; i < audioFormats.length; i++) {
-                // Add a 'checked' property to each item
                 audioFormats[i].checked = false;
                 audioFormatsModel.append(audioFormats[i]);
             }
 
-            console.log("QML: videoFormatsModel.count:" + videoFormatsModel.count);
-            console.log("QML: audioFormatsModel.count:" + audioFormatsModel.count);
-
             videoInfoDisplay.visible = true
 
-            // Clear any previous selections when new info is loaded
             root.selectedVideoFormat = null;
             root.selectedAudioFormat = null;
+        }
 
-            // Add a small delay to allow layout to update before checking contentHeight
-            Qt.callLater(function() {
-                console.log("QML: videoFormatsView.contentHeight:" + videoFormatsView.contentHeight);
-                console.log("QML: audioFormatsView.contentHeight:" + audioFormatsView.contentHeight);
-            });
+        function onVideoInfoError(error) {
+            loadingOverlay.visible = false;
         }
     }
 
@@ -170,10 +165,38 @@ Rectangle {
                 Layout.preferredHeight: 46
                 Layout.alignment: Qt.AlignTop
                 Layout.topMargin: -7
-                enabled: isValid
-                onClicked: youtubeService.fetchVideoInfo(linkInput.text)
+                enabled: isValid && !loadingOverlay.visible
+                onClicked: {
+                    loadingOverlay.visible = true;
+                    videoInfoDisplay.visible = false;
+                    youtubeService.fetchVideoInfo(linkInput.text);
+                }
             }
             Item { Layout.fillWidth: true }
+        }
+
+        Rectangle {
+            id: loadingOverlay
+            visible: false
+            color: "#2a2a2a"
+            radius: 5
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            z: 10
+
+            ColumnLayout {
+                anchors.centerIn: parent
+                spacing: 15
+                BusyIndicator {
+                    running: true
+                    Layout.alignment: Qt.AlignHCenter
+                }
+                Text {
+                    text: "Fetching video info..."
+                    color: "white"
+                    font.pixelSize: 16
+                }
+            }
         }
 
         Rectangle {
@@ -214,11 +237,24 @@ Rectangle {
                             font.pixelSize: 12
                             color: "#bbbbbb"
                             wrapMode: Text.WordWrap
+                            visible: contentType !== "youtube music"
                         }
                         Text {
                             id: durationText
                             font.pixelSize: 12
                             color: "#bbbbbb"
+                        }
+                        Text {
+                            id: artistText
+                            font.pixelSize: 12
+                            color: "#bbbbbb"
+                            visible: contentType === "youtube music"
+                        }
+                        Text {
+                            id: albumText
+                            font.pixelSize: 12
+                            color: "#bbbbbb"
+                            visible: contentType === "youtube music"
                         }
                     }
                 }
@@ -228,6 +264,8 @@ Rectangle {
                     spacing: 10
 
                     ColumnLayout {
+                        id: videoFormatsColumn
+                        visible: contentType !== "youtube music"
                         Layout.fillWidth: true
                         Text { text: "Video Formats"; color: "#cccccc"; font.bold: true; font.pixelSize: 14 }
                         RowLayout {
@@ -364,6 +402,7 @@ Rectangle {
                                 color: "white"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
+                                visible: contentType !== "youtube music"
                             }
                             Text {
                                 text: "<b>Selected Audio:</b> " + (root.selectedAudioFormat ? Math.round(root.selectedAudioFormat.abr) + " kbps" + " (" + root.selectedAudioFormat.filesize + ")" : "<i>None</i>")
@@ -401,7 +440,7 @@ Rectangle {
 								enabled: root.selectedVideoFormat || root.selectedAudioFormat
 								onClicked: {
 									if (root.selectedVideoFormat || root.selectedAudioFormat) {
-										youtubeService.download(linkInput.text, root.selectedVideoFormat, root.selectedAudioFormat);
+										youtubeService.download(root.videoUrl, root.selectedVideoFormat || {}, root.selectedAudioFormat || {});
 									}
 								}
 							}

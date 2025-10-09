@@ -18,6 +18,12 @@ public:
 
     Q_INVOKABLE void execute(const QString &program, const QStringList &arguments) override;
     Q_INVOKABLE void fetchVideoInfo(const QString &url);
+    Q_INVOKABLE void download(const QString &url, const QVariantMap &videoFormat, const QVariantMap &audioFormat);
+
+signals:
+    void downloadProgress(int progress);
+    void downloadFinished(const QString &filePath);
+    void downloadError(const QString &errorString);
 
 private slots:
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
@@ -27,10 +33,16 @@ private slots:
     void onJsonParseTimeout();
     void onThumbnailDownloaded(QNetworkReply *reply); // New slot for thumbnail download
 
+    void onDownloadProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
+    void onDownloadProcessErrorOccurred(QProcess::ProcessError error);
+    void onReadyReadDownloadProcessStandardOutput();
+    void onReadyReadDownloadProcessStandardError();
+
 private:
     void parseAndEmitVideoInfo();
 
     QProcess *m_process;
+    QProcess *m_downloadProcess;
     ToolsManager *m_toolsManager;
     QByteArray m_outputBuffer;
     QStringList m_lastArguments;
@@ -40,6 +52,7 @@ private:
 
     QNetworkAccessManager *m_thumbnailManager; // New network manager for thumbnails
     QVariantMap m_pendingVideoInfo; // To hold info while thumbnail downloads
+    QString m_downloadFilePath;
 };
 
 #endif // YOUTUBESERVICE_H

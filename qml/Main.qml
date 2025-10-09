@@ -106,6 +106,22 @@ ApplicationWindow {
         function onVideoInfoError(error) {
             consoleView.internalConsole.append("ERROR: " + error)
         }
+
+        function onDownloadProgress(progress) {
+            footerView.busy = true;
+            footerView.progressValue = progress / 100.0;
+            footerView.progressText = "Downloading... " + progress + "%";
+        }
+
+        function onDownloadFinished(filePath) {
+            footerView.busy = false;
+            consoleView.internalConsole.append("Download finished: " + filePath);
+        }
+
+        function onDownloadError(errorString) {
+            footerView.busy = false;
+            consoleView.internalConsole.append("Download ERROR: " + errorString);
+        }
     }
 
     Timer {
@@ -128,6 +144,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: consoleView.visible ? consoleView.top : parent.bottom
+        onIsLoadingChanged: footerView.updateButtonEnabled = !isLoading
     }
 
     Console {
