@@ -131,7 +131,7 @@ Rectangle {
                     id: linkInput
                     Layout.preferredWidth: 400
                     Layout.preferredHeight: 32
-                    placeholderText: "Enter YouTube video link"
+                    placeholderText: "Enter link"
                     Material.accent: focus ? "#c23628" : "#555555"
                     Material.theme: Material.Dark
                     font.pixelSize: 13
@@ -165,7 +165,7 @@ Rectangle {
                 Layout.preferredHeight: 46
                 Layout.alignment: Qt.AlignTop
                 Layout.topMargin: -7
-                enabled: isValid && !loadingOverlay.visible
+                enabled: isValid && !isLoading
                 onClicked: {
                     loadingOverlay.visible = true;
                     videoInfoDisplay.visible = false;
@@ -190,6 +190,7 @@ Rectangle {
                 BusyIndicator {
                     running: true
                     Layout.alignment: Qt.AlignHCenter
+					Material.accent: "#c23628"
                 }
                 Text {
                     text: "Fetching video info..."

@@ -88,7 +88,7 @@ void YoutubeService::execute(const QString &program, const QStringList &argument
 void YoutubeService::fetchVideoInfo(const QString &url)
 {
     qDebug() << "YoutubeService: Fetching video info for URL:" << url;
-    execute("yt-dlp", {"--no-progress", "--dump-json", "--no-playlist", url});
+    execute("yt-dlp", {"--no-progress",  "--dump-json", "--no-playlist", url});
 }
 
 void YoutubeService::download(const QString &url, const QVariantMap &videoFormat, const QVariantMap &audioFormat)
@@ -111,6 +111,7 @@ void YoutubeService::download(const QString &url, const QVariantMap &videoFormat
     arguments << "-f" << formatString;
     arguments << "--embed-thumbnail";
     arguments << "--embed-metadata";
+    arguments << "--newline";
 
     QString downloadPath = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
     if (downloadPath.isEmpty()) {
@@ -303,10 +304,15 @@ void YoutubeService::onReadyReadDownloadProcessStandardOutput()
     emit processOutput(output);
 
     QRegularExpression progressRe("\[download\]\\s+([\\d\\.]+)%");
-    QRegularExpressionMatch progressMatch = progressRe.match(output);
-    if (progressMatch.hasMatch()) {
-        double progress = progressMatch.captured(1).toDouble();
-        emit downloadProgress(static_cast<int>(progress));
+    QRegularExpressionMatchIterator i = progressRe.globalMatch(output);
+    QRegularExpressionMatch lastMatch;
+    while (i.hasNext()) {
+        lastMatch = i.next();
+    }
+
+    if (lastMatch.hasMatch()) {
+        double progress = lastMatch.captured(1).toDouble();
+        emit downloadProgress(progress);
     }
 
     QRegularExpression mergeRe("\[Merger\] Merging formats into \"(.*)\"");

@@ -21,7 +21,7 @@ public:
     Q_INVOKABLE void download(const QString &url, const QVariantMap &videoFormat, const QVariantMap &audioFormat);
 
 signals:
-    void downloadProgress(int progress);
+    void downloadProgress(double progress);
     void downloadFinished(const QString &filePath);
     void downloadError(const QString &errorString);
 
