@@ -5,6 +5,7 @@
 
 #include "ToolsManager.h"
 #include "YoutubeService.h"
+#include "SettingsManager.h"
 
 int main(int argc, char *argv[])
 {
@@ -16,7 +17,10 @@ int main(int argc, char *argv[])
     ToolsManager toolsManager;
     engine.rootContext()->setContextProperty("toolsManager", &toolsManager);
 
-    YoutubeService youtubeService(&toolsManager);
+    SettingsManager settingsManager;
+    engine.rootContext()->setContextProperty("settingsManager", &settingsManager);
+
+    YoutubeService youtubeService(&toolsManager, &settingsManager);
     engine.rootContext()->setContextProperty("youtubeService", &youtubeService);
 
     QObject::connect(

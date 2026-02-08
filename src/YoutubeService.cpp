@@ -1,5 +1,6 @@
 #include "YoutubeService.h"
 #include "ToolsManager.h"
+#include "SettingsManager.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -33,11 +34,12 @@ QString formatSize(double bytes) {
     return QString::asprintf("%.2f GB", mb / 1024.0);
 }
 
-YoutubeService::YoutubeService(ToolsManager *toolsManager, QObject *parent)
+YoutubeService::YoutubeService(ToolsManager *toolsManager, SettingsManager *settingsManager, QObject *parent)
     : YtDlp{parent}
     , m_process(new QProcess(this))
     , m_downloadProcess(new QProcess(this))
     , m_toolsManager(toolsManager)
+    , m_settingsManager(settingsManager)
     , m_parsingInitiated(false)
 {
     qDebug() << "YoutubeService: Initializing...";
@@ -88,7 +90,22 @@ void YoutubeService::execute(const QString &program, const QStringList &argument
 void YoutubeService::fetchVideoInfo(const QString &url)
 {
     qDebug() << "YoutubeService: Fetching video info for URL:" << url;
-    execute("yt-dlp", {"--no-progress",  "--dump-json", "--no-playlist", url});
+    QStringList arguments = {"--no-progress",  "--dump-json", "--no-playlist"};
+
+    QString cookiePath = m_settingsManager->loadCookiePath();
+    if (!cookiePath.isEmpty()) {
+        qDebug() << "YoutubeService: Using cookie file:" << cookiePath;
+        arguments << "--cookies" << cookiePath;
+    }
+
+    QString denoPath = m_settingsManager->loadDenoPath();
+    if (!denoPath.isEmpty()) {
+        qDebug() << "YoutubeService: Using deno engine:" << denoPath;
+        arguments << "--js-engine" << denoPath;
+    }
+
+    arguments << url;
+    execute("yt-dlp", arguments);
 }
 
 void YoutubeService::download(const QString &url, const QVariantMap &videoFormat, const QVariantMap &audioFormat)
@@ -112,6 +129,18 @@ void YoutubeService::download(const QString &url, const QVariantMap &videoFormat
     arguments << "--embed-thumbnail";
     arguments << "--embed-metadata";
     arguments << "--newline";
+
+    QString cookiePath = m_settingsManager->loadCookiePath();
+    if (!cookiePath.isEmpty()) {
+        qDebug() << "YoutubeService: Using cookie file for download:" << cookiePath;
+        arguments << "--cookies" << cookiePath;
+    }
+
+    QString denoPath = m_settingsManager->loadDenoPath();
+    if (!denoPath.isEmpty()) {
+        qDebug() << "YoutubeService: Using deno engine for download:" << denoPath;
+        arguments << "--js-engine" << denoPath;
+    }
 
     QString downloadPath = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
     if (downloadPath.isEmpty()) {

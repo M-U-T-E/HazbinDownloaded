@@ -19,6 +19,7 @@ public:
 
     Q_INVOKABLE QString ytDlpPath() const;
     Q_INVOKABLE QString ffmpegPath() const;
+    Q_INVOKABLE QString denoPath() const;
 
 public slots:
     void startDownload(const QString &toolName, const QString &urlString, const QString &fileExtension);
@@ -32,6 +33,7 @@ signals:
 
     void ffmpegStatus(bool found);
     void ytDlpStatus(bool found);
+    void denoStatus(bool found);
 
     // New: Signals for yt-dlp version information
     void localYtDlpVersion(const QString &version);
@@ -51,6 +53,7 @@ private slots:
 
 private:
     void extractZipArchive(const QString &zipPath);
+    void extractDenoZipArchive(const QString &zipPath);
     void extractTarXzArchive(const QString &tarXzPath);
     void installYtDlpBinary(const QString &downloadedFilePath);
     int compareVersions(const QString &v1, const QString &v2); // Helper for version comparison
@@ -73,6 +76,7 @@ private:
 
     QString m_ytDlpPath;
     QString m_ffmpegPath;
+    QString m_denoPath;
 };
 
 #endif // TOOLSMANAGER_H

@@ -13,6 +13,7 @@ Pane {
     signal copyClicked()
     signal clearClicked()
     signal updateToolsClicked()
+    signal settingsClicked()
 
     property alias autoScrollChecked: autoScrollButton.checked
     property bool consoleControlsEnabled: false
@@ -49,6 +50,10 @@ Pane {
             StyledButton {
                 text: "Show console"
                 onClicked: root.showConsoleClicked()
+            }
+            StyledButton {
+                text: "Settings"
+                onClicked: root.settingsClicked()
             }
             StyledButton {
                 text: "Copy"

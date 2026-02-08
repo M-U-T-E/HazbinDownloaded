@@ -45,6 +45,11 @@ QString ToolsManager::ffmpegPath() const
     return m_ffmpegPath;
 }
 
+QString ToolsManager::denoPath() const
+{
+    return m_denoPath;
+}
+
 void ToolsManager::checkToolsOnStartup()
 {
     QString appPath = QCoreApplication::applicationDirPath();
@@ -68,6 +73,16 @@ void ToolsManager::checkToolsOnStartup()
     } else {
         m_ytDlpPath.clear();
         emit ytDlpStatus(false);
+    }
+
+    // Check for deno
+    QString denoExecutablePath = toolsInstallPath + (QSysInfo::productType() == "windows" ? "/deno.exe" : "/deno");
+    if (QFileInfo::exists(denoExecutablePath)) {
+        m_denoPath = denoExecutablePath;
+        emit denoStatus(true);
+    } else {
+        m_denoPath.clear();
+        emit denoStatus(false);
     }
 }
 
@@ -290,6 +305,8 @@ void ToolsManager::onDownloadFinished(QNetworkReply *reply)
         }
     } else if (m_currentToolName == "yt-dlp") {
         installYtDlpBinary(tempFilePath);
+    } else if (m_currentToolName == "deno") {
+        extractDenoZipArchive(tempFilePath);
     } else {
         emit progressChanged(100, QString("Error: Unknown tool to install: %1").arg(m_currentToolName));
         m_overallSuccess = false;
@@ -393,6 +410,77 @@ void ToolsManager::extractZipArchive(const QString &zipPath)
     m_overallSuccess = false;
     QMetaObject::invokeMethod(this, "progressChanged", Qt::QueuedConnection,
                               Q_ARG(int, 100), Q_ARG(QString, "Error: ZIP extraction not supported on this OS."));
+    if (m_currentTempDir) { delete m_currentTempDir; m_currentTempDir = nullptr; }
+    QMetaObject::invokeMethod(this, "processNextDownload", Qt::QueuedConnection);
+#endif
+}
+
+void ToolsManager::extractDenoZipArchive(const QString &zipPath)
+{
+#ifdef Q_OS_WIN
+    emit progressChanged(100, "Extracting ZIP for Deno...");
+
+    QFutureWatcher<bool> *watcher = new QFutureWatcher<bool>(this);
+    connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher]() {
+        bool success = watcher->result();
+        if (success) {
+            emit progressChanged(100, "Deno installation complete!");
+            checkToolsOnStartup();
+        } else {
+            m_overallSuccess = false;
+        }
+        watcher->deleteLater();
+        if (m_currentTempDir) { delete m_currentTempDir; m_currentTempDir = nullptr; }
+        processNextDownload();
+    });
+
+    QFuture<bool> future = QtConcurrent::run([this, zipPath]() {
+        mz_zip_archive zip_archive = {};
+        if (!mz_zip_reader_init_file(&zip_archive, zipPath.toUtf8().constData(), 0)) {
+            QMetaObject::invokeMethod(this, "progressChanged", Qt::QueuedConnection,
+                                      Q_ARG(int, 100), Q_ARG(QString, "Error: Failed to initialize zip reader for Deno."));
+            return false;
+        }
+
+        QString installPath = QCoreApplication::applicationDirPath() + "/tools";
+        QDir dir(installPath);
+        if (!dir.exists()) {
+            dir.mkpath(".");
+        }
+
+        bool denoExtracted = false;
+        for (mz_uint i = 0; i < mz_zip_reader_get_num_files(&zip_archive); i++) {
+            mz_zip_archive_file_stat file_stat;
+            if (!mz_zip_reader_file_stat(&zip_archive, i, &file_stat)) {
+                continue; // Skip if can't get stats
+            }
+
+            QString filename = QString::fromUtf8(file_stat.m_filename);
+            if (filename == "deno.exe") {
+                QString targetFullPath = installPath + "/deno.exe";
+                if (mz_zip_reader_extract_to_file(&zip_archive, i, targetFullPath.toUtf8().constData(), 0)) {
+                    denoExtracted = true;
+                }
+                break; // Found and extracted, no need to loop further
+            }
+        }
+
+        mz_zip_reader_end(&zip_archive);
+
+        if (!denoExtracted) {
+            QMetaObject::invokeMethod(this, "progressChanged", Qt::QueuedConnection,
+                                      Q_ARG(int, 100), Q_ARG(QString, "Error: 'deno.exe' not found in the downloaded archive."));
+        }
+
+        return denoExtracted;
+    });
+
+    watcher->setFuture(future);
+#else
+    Q_UNUSED(zipPath);
+    m_overallSuccess = false;
+    QMetaObject::invokeMethod(this, "progressChanged", Qt::QueuedConnection,
+                              Q_ARG(int, 100), Q_ARG(QString, "Error: Deno ZIP extraction not supported on this OS."));
     if (m_currentTempDir) { delete m_currentTempDir; m_currentTempDir = nullptr; }
     QMetaObject::invokeMethod(this, "processNextDownload", Qt::QueuedConnection);
 #endif

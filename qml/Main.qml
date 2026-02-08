@@ -13,15 +13,21 @@ ApplicationWindow {
     property bool isConsoleVisible: false
 
     // OS-specific FFmpeg download URLs
-    property string ffmpegWindowsDownloadUrl: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
+	property string ffmpegWindowsDownloadUrl: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
     property string ffmpegLinuxDownloadUrl: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-lgpl-shared.tar.xz"
 
     // OS-specific yt-dlp download URLs
     property string ytDlpWindowsDownloadUrl: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
     property string ytDlpLinuxDownloadUrl: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
 
+    // OS-specific deno download URLs
+    property string denoWindowsDownloadUrl: "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
+    property string denoLinuxDownloadUrl: "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip"
+
+
     property bool ffmpegIsInstalled: false
     property bool ytDlpIsInstalled: false // New property to track yt-dlp installation status
+    property bool denoIsInstalled: false
     property string localYtDlpVersionString: "N/A" // Stores local version for display
     property bool ytDlpUpdateIsAvailable: false // Stores update availability
 
@@ -69,6 +75,12 @@ ApplicationWindow {
             root.ytDlpIsInstalled = found;
             root.updateYtDlpDisplayStatus();
         }
+
+        function onDenoStatus(found) {
+            root.denoIsInstalled = found;
+        }
+
+
 
         function onLocalYtDlpVersion(version) {
             root.localYtDlpVersionString = version;
@@ -138,13 +150,30 @@ ApplicationWindow {
         toolsManager.checkYtDlpVersion();
     }
 
-    MainContent {
-        id: mainContentView
+    StackLayout {
+        id: mainStack
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: consoleView.visible ? consoleView.top : parent.bottom
-        onIsLoadingChanged: footerView.updateButtonEnabled = !isLoading
+        currentIndex: 0
+
+        MainContent {
+            id: mainContentView
+            onIsLoadingChanged: footerView.updateButtonEnabled = !isLoading
+        }
+
+        Loader {
+            id: settingsLoader
+            sourceComponent: settingsComponent
+        }
+    }
+
+    Component {
+        id: settingsComponent
+        Settings {
+            id: settingsView
+        }
     }
 
     Console {
@@ -171,6 +200,7 @@ ApplicationWindow {
         consoleControlsEnabled: root.isConsoleVisible
 
         onShowConsoleClicked: root.isConsoleVisible = !root.isConsoleVisible
+        onSettingsClicked: mainStack.currentIndex = 1
         onCopyClicked: consoleView.copy()
         onClearClicked: consoleView.clear()
 
@@ -197,6 +227,17 @@ ApplicationWindow {
                 downloadInitiated = true;
             } else {
                 consoleView.internalConsole.append("yt-dlp is already up to date. Skipping download.");
+            }
+
+            if (!root.denoIsInstalled) {
+                toolsManager.startDownload(
+                    "deno",
+                    Qt.platform.os === "windows" ? root.denoWindowsDownloadUrl : root.denoLinuxDownloadUrl,
+                    "zip"
+                );
+                downloadInitiated = true;
+            } else {
+                consoleView.internalConsole.append("Deno is already installed. Skipping download.");
             }
 
             if (!downloadInitiated) {

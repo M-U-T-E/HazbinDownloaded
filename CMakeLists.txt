@@ -17,11 +17,12 @@ endif()
 qt_add_executable(HazbinDownloaded
     src/main.cpp src/ToolsManager.h src/ToolsManager.cpp
     src/YtDlp.h src/YtDlp.cpp src/YoutubeService.h src/YoutubeService.cpp
+    src/SettingsManager.h src/SettingsManager.cpp
 )
 
 set(QML_SOURCES
     qml/Main.qml qml/MainContent.qml qml/StyledButton.qml
-    qml/Footer.qml qml/Console.qml
+    qml/Footer.qml qml/Console.qml qml/Settings.qml
 )
 
 qt_add_qml_module(HazbinDownloaded

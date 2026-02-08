@@ -9,12 +9,13 @@
 #include <QNetworkReply>
 
 class ToolsManager; // Forward declaration
+class SettingsManager; // Forward declaration
 
 class YoutubeService : public YtDlp
 {
     Q_OBJECT
 public:
-    explicit YoutubeService(ToolsManager *toolsManager, QObject *parent = nullptr);
+    explicit YoutubeService(ToolsManager *toolsManager, SettingsManager *settingsManager, QObject *parent = nullptr);
 
     Q_INVOKABLE void execute(const QString &program, const QStringList &arguments) override;
     Q_INVOKABLE void fetchVideoInfo(const QString &url);
@@ -44,6 +45,7 @@ private:
     QProcess *m_process;
     QProcess *m_downloadProcess;
     ToolsManager *m_toolsManager;
+    SettingsManager *m_settingsManager;
     QByteArray m_outputBuffer;
     QStringList m_lastArguments;
 
