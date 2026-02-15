@@ -13,7 +13,7 @@ ApplicationWindow {
     property bool isConsoleVisible: false
 
     // OS-specific FFmpeg download URLs
-	property string ffmpegWindowsDownloadUrl: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
+    property string ffmpegWindowsDownloadUrl: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
     property string ffmpegLinuxDownloadUrl: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-lgpl-shared.tar.xz"
 
     // OS-specific yt-dlp download URLs
@@ -23,7 +23,6 @@ ApplicationWindow {
     // OS-specific deno download URLs
     property string denoWindowsDownloadUrl: "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
     property string denoLinuxDownloadUrl: "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip"
-
 
     property bool ffmpegIsInstalled: false
     property bool ytDlpIsInstalled: false // New property to track yt-dlp installation status
@@ -80,8 +79,6 @@ ApplicationWindow {
             root.denoIsInstalled = found;
         }
 
-
-
         function onLocalYtDlpVersion(version) {
             root.localYtDlpVersionString = version;
             consoleView.internalConsole.append("Local yt-dlp version: " + version);
@@ -108,30 +105,37 @@ ApplicationWindow {
         target: youtubeService
 
         function onProcessOutput(output) {
-            consoleView.internalConsole.append(output)
+            consoleView.internalConsole.append(output);
         }
 
         function onProcessError(error) {
-            consoleView.internalConsole.append(error)
+            consoleView.internalConsole.append(error);
         }
 
         function onVideoInfoError(error) {
-            consoleView.internalConsole.append("ERROR: " + error)
+            consoleView.internalConsole.append("ERROR: " + error);
         }
 
-        function onDownloadProgress(progress) {
-            footerView.busy = true;
-            footerView.progressValue = progress / 100.0;
-            footerView.progressText = "Downloading... " + progress + "%";
+        function onDownloadProgress(progress, speed, eta, totalSize) {
+            // Pass these to MainContent as well for the new overlay
+            mainContentView.downloadProgressValue = progress / 100.0;
+            mainContentView.downloadSpeed = speed;
+            mainContentView.downloadEta = eta;
+            mainContentView.downloadTotalSize = totalSize;
+            mainContentView.isDownloading = true;
+        }
+
+        function onDownloadStatus(status) {
+            mainContentView.downloadStatus = status;
         }
 
         function onDownloadFinished(filePath) {
-            footerView.busy = false;
+            mainContentView.isDownloading = false;
             consoleView.internalConsole.append("Download finished: " + filePath);
         }
 
         function onDownloadError(errorString) {
-            footerView.busy = false;
+            mainContentView.isDownloading = false;
             consoleView.internalConsole.append("Download ERROR: " + errorString);
         }
     }
@@ -190,7 +194,7 @@ ApplicationWindow {
 
         onTextChanged: {
             if (footerView.autoScrollChecked) {
-                internalConsole.cursorPosition = internalConsole.length
+                internalConsole.cursorPosition = internalConsole.length;
             }
         }
     }
@@ -208,33 +212,21 @@ ApplicationWindow {
             var downloadInitiated = false;
 
             if (!root.ffmpegIsInstalled) {
-                toolsManager.startDownload(
-                    "ffmpeg",
-                    Qt.platform.os === "windows" ? root.ffmpegWindowsDownloadUrl : root.ffmpegLinuxDownloadUrl,
-                    Qt.platform.os === "windows" ? "zip" : "tar.xz"
-                );
+                toolsManager.startDownload("ffmpeg", Qt.platform.os === "windows" ? root.ffmpegWindowsDownloadUrl : root.ffmpegLinuxDownloadUrl, Qt.platform.os === "windows" ? "zip" : "tar.xz");
                 downloadInitiated = true;
             } else {
                 consoleView.internalConsole.append("FFmpeg is already installed. Skipping download.");
             }
 
             if (root.ytDlpUpdateIsAvailable || !root.ytDlpIsInstalled) {
-                toolsManager.startDownload(
-                    "yt-dlp",
-                    Qt.platform.os === "windows" ? root.ytDlpWindowsDownloadUrl : root.ytDlpLinuxDownloadUrl,
-                    Qt.platform.os === "windows" ? "exe" : "bin"
-                );
+                toolsManager.startDownload("yt-dlp", Qt.platform.os === "windows" ? root.ytDlpWindowsDownloadUrl : root.ytDlpLinuxDownloadUrl, Qt.platform.os === "windows" ? "exe" : "bin");
                 downloadInitiated = true;
             } else {
                 consoleView.internalConsole.append("yt-dlp is already up to date. Skipping download.");
             }
 
             if (!root.denoIsInstalled) {
-                toolsManager.startDownload(
-                    "deno",
-                    Qt.platform.os === "windows" ? root.denoWindowsDownloadUrl : root.denoLinuxDownloadUrl,
-                    "zip"
-                );
+                toolsManager.startDownload("deno", Qt.platform.os === "windows" ? root.denoWindowsDownloadUrl : root.denoLinuxDownloadUrl, "zip");
                 downloadInitiated = true;
             } else {
                 consoleView.internalConsole.append("Deno is already installed. Skipping download.");

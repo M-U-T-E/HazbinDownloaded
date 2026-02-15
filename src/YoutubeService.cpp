@@ -160,7 +160,20 @@ void YoutubeService::download(const QString &url, const QVariantMap &videoFormat
     }
 
     qDebug() << "YoutubeService: Starting download with command:" << executablePath << arguments;
+    emit downloadStatus("Initializing...");
     m_downloadProcess->start(executablePath, arguments);
+}
+
+void YoutubeService::cancelDownload()
+{
+    if (m_downloadProcess && m_downloadProcess->state() != QProcess::NotRunning) {
+        qDebug() << "YoutubeService: Canceling download process...";
+        m_downloadProcess->terminate();
+        if (!m_downloadProcess->waitForFinished(3000)) {
+            qDebug() << "YoutubeService: Process did not terminate, killing...";
+            m_downloadProcess->kill();
+        }
+    }
 }
 
 void YoutubeService::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
@@ -332,30 +345,68 @@ void YoutubeService::onReadyReadDownloadProcessStandardOutput()
     QString output = QString::fromUtf8(data);
     emit processOutput(output);
 
-    QRegularExpression progressRe("\[download\]\\s+([\\d\\.]+)%");
-    QRegularExpressionMatchIterator i = progressRe.globalMatch(output);
-    QRegularExpressionMatch lastMatch;
-    while (i.hasNext()) {
-        lastMatch = i.next();
-    }
+    double progress = 0.0;
+    QString speed = "N/A";
+    QString eta = "N/A";
+    QString totalSize = "N/A";
 
-    if (lastMatch.hasMatch()) {
-        double progress = lastMatch.captured(1).toDouble();
-        emit downloadProgress(progress);
-    }
+    QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        if (line.contains("[download]") && line.contains("%")) {
+            emit downloadStatus("Downloading...");
+            // Regex for percentage
+            QRegularExpression progressRegex(R"(\d+(\.\d+)?%)");
+            QRegularExpressionMatch progressMatch = progressRegex.match(line);
+            if (progressMatch.hasMatch()) {
+                QString progressStr = progressMatch.captured(0).replace("%", "");
+                progress = progressStr.toDouble();
+            }
 
-    QRegularExpression mergeRe("\[Merger\] Merging formats into \"(.*)\"");
-    QRegularExpressionMatch mergeMatch = mergeRe.match(output);
-    if (mergeMatch.hasMatch()) {
-        m_downloadFilePath = mergeMatch.captured(1);
-        qDebug() << "YoutubeService: Detected merged file path:" << m_downloadFilePath;
-    }
+            // Regex for speed
+            QRegularExpression speedRegex(R"(\d+(\.\d+)?\w+/s)");
+            QRegularExpressionMatch speedMatch = speedRegex.match(line);
+            if (speedMatch.hasMatch()) {
+                speed = speedMatch.captured(0);
+            }
 
-    QRegularExpression destRe("\[download\] Destination: (.*)");
-    QRegularExpressionMatch destMatch = destRe.match(output);
-    if (destMatch.hasMatch()) {
-        m_downloadFilePath = destMatch.captured(1);
-        qDebug() << "YoutubeService: Detected download file path:" << m_downloadFilePath;
+            // Regex for ETA
+            QRegularExpression etaRegex(R"(ETA\s+(\d+:\d+))");
+            QRegularExpressionMatch etaMatch = etaRegex.match(line);
+            if (etaMatch.hasMatch()) {
+                eta = etaMatch.captured(1);
+            }
+
+            // Regex for total size
+            QRegularExpression sizeRegex(R"(of\s+(\d+(\.\d+)?\w+))");
+            QRegularExpressionMatch sizeMatch = sizeRegex.match(line);
+            if (sizeMatch.hasMatch()) {
+                totalSize = sizeMatch.captured(1);
+            }
+
+            emit downloadProgress(progress, speed, eta, totalSize);
+        } else if (line.contains("[Merger]") || line.contains("Merging")) {
+            emit downloadStatus("Merging formats...");
+        } else if (line.contains("[VideoConvertor]") || line.contains("Converting")) {
+            emit downloadStatus("Converting...");
+        } else if (line.contains("Deleting original")) {
+            emit downloadStatus("Cleaning up...");
+        } else if (line.contains("[ExtractAudio]")) {
+            emit downloadStatus("Extracting audio...");
+        }
+
+        QRegularExpression mergeRe("\[Merger\] Merging formats into \"(.*)\"");
+        QRegularExpressionMatch mergeMatch = mergeRe.match(line);
+        if (mergeMatch.hasMatch()) {
+            m_downloadFilePath = mergeMatch.captured(1);
+            qDebug() << "YoutubeService: Detected merged file path:" << m_downloadFilePath;
+        }
+
+        QRegularExpression destRe("\[download\] Destination: (.*)");
+        QRegularExpressionMatch destMatch = destRe.match(line);
+        if (destMatch.hasMatch()) {
+            m_downloadFilePath = destMatch.captured(1);
+            qDebug() << "YoutubeService: Detected download file path:" << m_downloadFilePath;
+        }
     }
 
     QRegularExpression ffmpegMergeRe("\[ffmpeg\] Merging formats into \"(.*)\"");
